@@ -1,10 +1,6 @@
 import { createAdminClient } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 
-const WORKER_URL = process.env.WORKER_URL;
-const WORKER_SECRET = process.env.WORKER_SECRET;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-
 /**
  * Orchestrates a transcription:
  *  1. mark the row as processing
@@ -30,19 +26,33 @@ export const transcribeVideo = inngest.createFunction(
     });
 
     await step.run("dispatch-to-worker", async () => {
-      if (!WORKER_URL || !WORKER_SECRET) {
-        throw new Error("WORKER_URL / WORKER_SECRET are not configured");
+      // Read env at call time (not module load) so values set in the host are
+      // always picked up at runtime.
+      const workerUrl = process.env.WORKER_URL;
+      const workerSecret = process.env.WORKER_SECRET;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+      const missing = [
+        !workerUrl && "WORKER_URL",
+        !workerSecret && "WORKER_SECRET",
+      ].filter(Boolean);
+      if (missing.length > 0) {
+        throw new Error(
+          `Missing env var(s): ${missing.join(", ")}. Set them in your host ` +
+            `(e.g. Vercel → Settings → Environment Variables) and redeploy.`
+        );
       }
-      const res = await fetch(`${WORKER_URL.replace(/\/$/, "")}/transcribe`, {
+
+      const res = await fetch(`${workerUrl!.replace(/\/$/, "")}/transcribe`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${WORKER_SECRET}`,
+          authorization: `Bearer ${workerSecret}`,
         },
         body: JSON.stringify({
           transcriptId,
           videoUrl,
-          callbackUrl: `${APP_URL.replace(/\/$/, "")}/api/transcription/callback`,
+          callbackUrl: `${appUrl.replace(/\/$/, "")}/api/transcription/callback`,
         }),
       });
       if (!res.ok) {
