@@ -26,6 +26,7 @@ export interface Database {
           email?: string;
           created_at?: string;
         };
+        Relationships: [];
       };
       transcripts: {
         Row: {
@@ -36,6 +37,10 @@ export interface Database {
           status: TranscriptStatus;
           transcript_text: string | null;
           format: string | null;
+          language: string | null;
+          duration_seconds: number | null;
+          segments: unknown | null;
+          error: string | null;
           created_at: string;
         };
         Insert: {
@@ -46,6 +51,10 @@ export interface Database {
           status?: TranscriptStatus;
           transcript_text?: string | null;
           format?: string | null;
+          language?: string | null;
+          duration_seconds?: number | null;
+          segments?: unknown | null;
+          error?: string | null;
           created_at?: string;
         };
         Update: {
@@ -56,8 +65,13 @@ export interface Database {
           status?: TranscriptStatus;
           transcript_text?: string | null;
           format?: string | null;
+          language?: string | null;
+          duration_seconds?: number | null;
+          segments?: unknown | null;
+          error?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       usage: {
         Row: {
@@ -81,12 +95,19 @@ export interface Database {
           is_subscribed?: boolean;
           created_at?: string;
         };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      increment_transcript_count: {
+        Args: { p_user_id: string };
+        Returns: undefined;
+      };
+    };
     Enums: {
       transcript_status: TranscriptStatus;
     };
+    CompositeTypes: Record<string, never>;
   };
 }
