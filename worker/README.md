@@ -54,3 +54,29 @@ npm run dev
 
 Long/large audio is automatically split into chunks that fit Groq's upload
 limit, then stitched back together with correct timestamps.
+
+## Troubleshooting
+
+### YouTube: "Sign in to confirm you're not a bot"
+
+YouTube blocks requests from datacenter IPs (Railway, most clouds). The reliable
+fix is to give yt-dlp cookies from a logged-in browser:
+
+1. Install a "Get cookies.txt" browser extension and export **cookies.txt**
+   (Netscape format) while signed in to YouTube. (Use a throwaway Google
+   account — these cookies grant access to that account.)
+2. Base64-encode it: `base64 -w0 cookies.txt` (Linux) or `base64 -i cookies.txt`
+   (macOS).
+3. Set `YTDLP_COOKIES_B64` to that string in Railway and redeploy.
+
+Cookies expire periodically, so you'll need to refresh them every so often.
+
+Without cookies you can try `YTDLP_EXTRACTOR_ARGS=youtube:player_client=android`,
+but it's far less reliable than cookies.
+
+### Callbacks not arriving / results never saved
+
+The callback URL is built by the **Next.js app**, not the worker. Set
+`NEXT_PUBLIC_APP_URL` to your production URL in **Vercel** (the app falls back to
+`VERCEL_URL` automatically, but an explicit value is safest). If it points at
+`localhost`, the worker can't reach your app.
