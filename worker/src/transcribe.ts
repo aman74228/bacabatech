@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
+import { createReadStream, writeFileSync } from "node:fs";
 import { mkdtemp, rm, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,10 +40,32 @@ function run(cmd: string, args: string[]): Promise<string> {
   });
 }
 
+/**
+ * Resolve a Netscape-format cookies file from env (memoized).
+ * Sites like YouTube block requests from datacenter IPs ("Sign in to confirm
+ * you're not a bot"); supplying cookies from a logged-in browser bypasses this.
+ * Set YTDLP_COOKIES_B64 (base64 of cookies.txt) or YTDLP_COOKIES (raw text).
+ */
+let cookiesPath: string | null | undefined;
+function getCookiesFile(): string | null {
+  if (cookiesPath !== undefined) return cookiesPath;
+  const b64 = process.env.YTDLP_COOKIES_B64;
+  const raw = process.env.YTDLP_COOKIES;
+  const content = b64 ? Buffer.from(b64, "base64").toString("utf8") : raw;
+  if (!content) {
+    cookiesPath = null;
+    return null;
+  }
+  const path = join(tmpdir(), "yt-cookies.txt");
+  writeFileSync(path, content, { mode: 0o600 });
+  cookiesPath = path;
+  return path;
+}
+
 /** Download the best audio for a URL and transcode to mono 16kHz mp3. */
 async function extractAudio(url: string, dir: string): Promise<string> {
   const out = join(dir, "audio.%(ext)s");
-  await run("yt-dlp", [
+  const args = [
     "--no-playlist",
     "--no-warnings",
     "-f",
@@ -55,10 +77,23 @@ async function extractAudio(url: string, dir: string): Promise<string> {
     "64K",
     "--postprocessor-args",
     "ffmpeg:-ac 1 -ar 16000",
-    "-o",
-    out,
-    url,
-  ]);
+  ];
+
+  const cookies = getCookiesFile();
+  if (cookies) args.push("--cookies", cookies);
+
+  // Optional levers for evading bot detection without cookies, e.g.
+  // YTDLP_EXTRACTOR_ARGS="youtube:player_client=android".
+  if (process.env.YTDLP_EXTRACTOR_ARGS) {
+    args.push("--extractor-args", process.env.YTDLP_EXTRACTOR_ARGS);
+  }
+  if (process.env.YTDLP_USER_AGENT) {
+    args.push("--user-agent", process.env.YTDLP_USER_AGENT);
+  }
+
+  args.push("-o", out, url);
+
+  await run("yt-dlp", args);
   const files = await readdir(dir);
   const mp3 = files.find((f) => f.endsWith(".mp3"));
   if (!mp3) throw new Error("yt-dlp produced no audio file");

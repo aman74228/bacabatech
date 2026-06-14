@@ -30,7 +30,12 @@ export const transcribeVideo = inngest.createFunction(
       // always picked up at runtime.
       const workerUrl = process.env.WORKER_URL;
       const workerSecret = process.env.WORKER_SECRET;
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      // Prefer an explicit app URL; fall back to the Vercel-provided deployment
+      // URL so the worker callback never silently points at localhost.
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+        "http://localhost:3000";
 
       const missing = [
         !workerUrl && "WORKER_URL",
