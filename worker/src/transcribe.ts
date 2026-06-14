@@ -68,8 +68,9 @@ async function extractAudio(url: string, dir: string): Promise<string> {
   const args = [
     "--no-playlist",
     "--no-warnings",
+    "--no-check-certificates",
     "-f",
-    "bestaudio/best",
+    "bestaudio",
     "-x",
     "--audio-format",
     "mp3",
@@ -82,11 +83,12 @@ async function extractAudio(url: string, dir: string): Promise<string> {
   const cookies = getCookiesFile();
   if (cookies) args.push("--cookies", cookies);
 
-  // Optional levers for evading bot detection without cookies, e.g.
-  // YTDLP_EXTRACTOR_ARGS="youtube:player_client=android".
-  if (process.env.YTDLP_EXTRACTOR_ARGS) {
-    args.push("--extractor-args", process.env.YTDLP_EXTRACTOR_ARGS);
-  }
+  // Default to the `web` player client, which currently returns formats most
+  // reliably; override via YTDLP_EXTRACTOR_ARGS (e.g. youtube:player_client=android).
+  const extractorArgs =
+    process.env.YTDLP_EXTRACTOR_ARGS ?? "youtube:player_client=web";
+  if (extractorArgs) args.push("--extractor-args", extractorArgs);
+
   if (process.env.YTDLP_USER_AGENT) {
     args.push("--user-agent", process.env.YTDLP_USER_AGENT);
   }
