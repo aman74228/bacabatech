@@ -1,12 +1,12 @@
 # Bacaba transcription worker — yt-dlp + ffmpeg + Node
 FROM node:20-slim
 
-# System deps: ffmpeg for audio, python3 + curl to fetch yt-dlp.
+# System deps: ffmpeg for audio, plus the latest yt-dlp via pip.
+# (Debian bookworm marks the env "externally managed" per PEP 668, so we pass
+# --break-system-packages to install yt-dlp system-wide inside the container.)
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg python3 curl ca-certificates \
-  && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
-       -o /usr/local/bin/yt-dlp \
-  && chmod a+rx /usr/local/bin/yt-dlp \
+  && apt-get install -y --no-install-recommends ffmpeg python3 python3-pip ca-certificates \
+  && pip install --no-cache-dir --break-system-packages -U yt-dlp \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
