@@ -3,6 +3,7 @@ import { createReadStream, writeFileSync } from "node:fs";
 import { mkdtemp, rm, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Groq from "groq-sdk";
 
 const GROQ_MODEL = process.env.GROQ_MODEL ?? "whisper-large-v3-turbo";
@@ -173,6 +174,60 @@ async function transcribeFile(
 
 /** Full pipeline: download audio, chunk if needed, transcribe, and merge. */
 export async function transcribeUrl(url: string): Promise<TranscriptionResult> {
+  // For YouTube, fetch the built-in captions directly — no download, no Groq,
+  // and it sidesteps yt-dlp's format/bot-detection issues. yt-dlp + Whisper is
+  // used only for non-YouTube platforms.
+  const youTubeId = getYouTubeId(url);
+  if (youTubeId) {
+    return await fetchYouTubeCaptions(youTubeId);
+  }
+  return await transcribeViaWhisper(url);
+}
+
+/** Extract the 11-char video id from any YouTube URL, or null if not YouTube. */
+function getYouTubeId(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^www\./, "");
+  if (host === "youtu.be") {
+    return u.pathname.slice(1).split("/")[0] || null;
+  }
+  if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+    if (u.pathname === "/watch") return u.searchParams.get("v");
+    const m = u.pathname.match(/^\/(?:shorts|embed|v|live)\/([^/?]+)/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+const CAPTIONS_SCRIPT = fileURLToPath(
+  new URL("../scripts/fetch_transcript.py", import.meta.url)
+);
+
+/** Fetch a YouTube video's captions via the youtube-transcript-api helper. */
+async function fetchYouTubeCaptions(
+  videoId: string
+): Promise<TranscriptionResult> {
+  let stdout: string;
+  try {
+    stdout = await run("python3", [CAPTIONS_SCRIPT, videoId]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Could not fetch YouTube captions: ${msg}`);
+  }
+  const parsed = JSON.parse(stdout) as TranscriptionResult;
+  if (!parsed.segments?.length) {
+    throw new Error("No captions are available for this YouTube video.");
+  }
+  return parsed;
+}
+
+/** yt-dlp + Groq Whisper pipeline for non-YouTube sources. */
+async function transcribeViaWhisper(url: string): Promise<TranscriptionResult> {
   const dir = await mkdtemp(join(tmpdir(), "bacaba-"));
   try {
     const audioPath = await extractAudio(url, dir);

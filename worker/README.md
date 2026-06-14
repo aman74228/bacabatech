@@ -1,11 +1,17 @@
 # Bacaba transcription worker
 
-A small HTTP service that extracts audio from a video URL with **yt-dlp +
-ffmpeg** and transcribes it with the **Groq Whisper API**. It runs separately
-from the Next.js app (which can't run yt-dlp/ffmpeg on Vercel's serverless
-runtime) and reports results back via a callback.
+A small HTTP service that turns a video URL into a transcript and reports the
+result back to the Next.js app via a callback. It runs separately from the app
+(which can't run yt-dlp/ffmpeg on Vercel's serverless runtime).
 
-Supports any site yt-dlp handles — YouTube, TikTok, Instagram, X/Twitter, etc.
+Two strategies depending on the source:
+
+- **YouTube** → fetches the video's built-in captions with
+  [`youtube-transcript-api`](https://pypi.org/project/youtube-transcript-api/).
+  No download, no Groq call — fast and it avoids yt-dlp's format/bot-detection
+  problems. Only works for videos that *have* captions.
+- **Everything else** (TikTok, Instagram, X/Twitter, …) → **yt-dlp → ffmpeg →
+  Groq Whisper**.
 
 ## How it fits together
 
@@ -57,22 +63,32 @@ limit, then stitched back together with correct timestamps.
 
 ## Troubleshooting
 
-### YouTube: "Sign in to confirm you're not a bot"
+### YouTube
 
-YouTube blocks requests from datacenter IPs (Railway, most clouds). The reliable
-fix is to give yt-dlp cookies from a logged-in browser:
+YouTube now goes through `youtube-transcript-api` (captions), not yt-dlp. Two
+things to know:
 
-1. Install a "Get cookies.txt" browser extension and export **cookies.txt**
-   (Netscape format) while signed in to YouTube. (Use a throwaway Google
-   account — these cookies grant access to that account.)
-2. Base64-encode it: `base64 -w0 cookies.txt` (Linux) or `base64 -i cookies.txt`
+- **No captions → it fails.** If a video has captions disabled, the job errors
+  with "No captions are available for this YouTube video." (We can add a
+  yt-dlp + Whisper fallback for these if you want.)
+- **IP blocking.** YouTube sometimes rate-limits/blocks the captions endpoint
+  from datacenter IPs (Railway, most clouds). If you see `RequestBlocked` /
+  `IpBlocked` errors, route the worker through a proxy — `youtube-transcript-api`
+  supports proxy configuration (e.g. Webshare). Open an issue/ping and we can
+  wire a `PROXY_URL` env var into `scripts/fetch_transcript.py`.
+
+### Non-YouTube (yt-dlp): "Sign in to confirm you're not a bot"
+
+For non-YouTube sources, yt-dlp may hit datacenter-IP blocks. Supply cookies
+from a logged-in browser:
+
+1. Install a "Get cookies.txt" extension and export **cookies.txt** (Netscape
+   format) while signed in. (Use a throwaway account.)
+2. Base64-encode it: `base64 -w0 cookies.txt` (Linux) / `base64 -i cookies.txt`
    (macOS).
 3. Set `YTDLP_COOKIES_B64` to that string in Railway and redeploy.
 
-Cookies expire periodically, so you'll need to refresh them every so often.
-
-Without cookies you can try `YTDLP_EXTRACTOR_ARGS=youtube:player_client=android`,
-but it's far less reliable than cookies.
+Cookies expire periodically, so refresh them every so often.
 
 ### Callbacks not arriving / results never saved
 
